@@ -1,6 +1,7 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import BrainNodesGraph from "@/components/BrainNodesGraph";
 import FaceMeshOverlay from "@/components/FaceMeshOverlay";
+import LearningsPills from "@/components/LearningsPills";
 
 import {
   Breadcrumb,
@@ -56,15 +57,17 @@ export default function AnalyticsPage() {
           </header>
 
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-            <div className="grid auto-rows-min gap-4 md:auto-rows-[420px] md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-              <div className="flex h-full min-w-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" style={{ height: "60vh" }}>
+              <div className="flex h-full min-w-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 p-2">
                 <FaceMeshOverlay imageUrl="/pic.jpg" />
               </div>
               <div className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/5 p-4 h-full">
                 <BrainNodesGraph />
               </div>
             </div>
-            <div className="min-h-75 flex-1 rounded-xl border border-white/10 bg-white/5 md:min-h-min" />
+            <div className="min-h-75 flex-1 rounded-xl border border-white/10 bg-white/5 md:min-h-min p-5">
+              <LearningsPills />
+            </div>
           </div>
         </SidebarInset>
       </SidebarProvider>

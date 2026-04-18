@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
-const FACE_MESH_SCRIPT_ID = "mediapipe-face-mesh-script";
-const TOP_OVERLAY_SPACE = 130;
+const TOP_OVERLAY_SPACE = 0;
+const IMG_PADDING_TOP = 60;
+const IMG_PADDING_SIDE = 16;
+const IMG_PADDING_BOTTOM = 10;
 const MESH_NODE_INDICES = [
   10, 338, 297, 332, 284, 263, 362, 1, 33, 133, 55, 70, 67, 234, 454, 61, 291,
   152, 103, 17,
@@ -223,6 +226,7 @@ function sampleLandmarkClusterHex(
   width,
   height,
   yOffset,
+  xOffset = 0,
 ) {
   const samples = [];
 
@@ -234,10 +238,10 @@ function sampleLandmarkClusterHex(
 
     const hex = sampleSkinHex(
       ctx,
-      point.x * width,
+      point.x * width + xOffset,
       point.y * height + yOffset,
       radius,
-      width,
+      width + xOffset * 2,
       height + yOffset,
     );
     if (!hex) {
@@ -331,6 +335,70 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+// ─── Hex → nearest color name ────────────────────────────────────────────────
+
+const COLOR_NAMES = [
+  { name: "Black",      r: 0,   g: 0,   b: 0   },
+  { name: "White",      r: 255, g: 255, b: 255 },
+  { name: "Ivory",      r: 255, g: 255, b: 240 },
+  { name: "Beige",      r: 245, g: 222, b: 179 },
+  { name: "Cream",      r: 255, g: 253, b: 208 },
+  { name: "Peach",      r: 255, g: 218, b: 185 },
+  { name: "Apricot",    r: 251, g: 206, b: 177 },
+  { name: "Sand",       r: 194, g: 178, b: 128 },
+  { name: "Tan",        r: 210, g: 180, b: 140 },
+  { name: "Caramel",    r: 255, g: 213, b: 153 },
+  { name: "Honey",      r: 235, g: 177, b: 89  },
+  { name: "Bronze",     r: 205, g: 127, b: 50  },
+  { name: "Copper",     r: 184, g: 115, b: 51  },
+  { name: "Amber",      r: 255, g: 191, b: 0   },
+  { name: "Chestnut",   r: 149, g: 69,  b: 53  },
+  { name: "Chocolate",  r: 123, g: 63,  b: 0   },
+  { name: "Espresso",   r: 78,  g: 42,  b: 20  },
+  { name: "Mahogany",   r: 192, g: 64,  b: 0   },
+  { name: "Auburn",     r: 165, g: 42,  b: 42  },
+  { name: "Burgundy",   r: 128, g: 0,   b: 32  },
+  { name: "Rose",       r: 255, g: 0,   b: 127 },
+  { name: "Blush",      r: 222, g: 93,  b: 131 },
+  { name: "Mauve",      r: 224, g: 176, b: 255 },
+  { name: "Pink",       r: 255, g: 192, b: 203 },
+  { name: "Coral",      r: 255, g: 127, b: 80  },
+  { name: "Salmon",     r: 250, g: 128, b: 114 },
+  { name: "Nude",       r: 235, g: 200, b: 178 },
+  { name: "Toffee",     r: 175, g: 111, b: 63  },
+  { name: "Walnut",     r: 120, g: 80,  b: 50  },
+  { name: "Mocha",      r: 150, g: 100, b: 64  },
+  { name: "Cocoa",      r: 112, g: 65,  b: 46  },
+  { name: "Sienna",     r: 160, g: 82,  b: 45  },
+  { name: "Umber",      r: 99,  g: 81,  b: 71  },
+  { name: "Ash",        r: 178, g: 190, b: 181 },
+  { name: "Slate",      r: 112, g: 128, b: 144 },
+  { name: "Charcoal",   r: 54,  g: 69,  b: 79  },
+  { name: "Jet Black",  r: 13,  g: 13,  b: 13  },
+  { name: "Golden",     r: 255, g: 215, b: 0   },
+  { name: "Strawberry", r: 195, g: 68,  b: 68  },
+  { name: "Taupe",      r: 72,  g: 60,  b: 50  },
+  { name: "Olive",      r: 128, g: 128, b: 0   },
+];
+
+function hexToColorName(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+
+  let closest = COLOR_NAMES[0];
+  let minDist = Infinity;
+  for (const c of COLOR_NAMES) {
+    const d = (rgb.r - c.r) ** 2 + (rgb.g - c.g) ** 2 + (rgb.b - c.b) ** 2;
+    if (d < minDist) {
+      minDist = d;
+      closest = c;
+    }
+  }
+  return closest.name;
+}
+
+// ─── Label arrow drawing ─────────────────────────────────────────────────────
+
 function drawForeheadHexArrow(
   ctx,
   anchorX,
@@ -345,8 +413,9 @@ function drawForeheadHexArrow(
   verticalLift = 0.45,
   labelRow = -1,
   forceSide = "auto",
+  tag = "",
 ) {
-  const minMargin = 14;
+  const minMargin = 10;
   const tipX = clamp(
     anchorX + faceWidth * 0.34 * directionX,
     minMargin,
@@ -355,172 +424,194 @@ function drawForeheadHexArrow(
   const tipY = clamp(
     anchorY - faceHeight * verticalLift,
     minMargin,
-    imageTopY - 14,
+    canvasHeight - minMargin,
   );
 
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 4;
+  // ── Arrow line ──
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.lineWidth = 1.5;
   ctx.lineCap = "round";
-  ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
-  ctx.shadowBlur = 3;
+  ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+  ctx.shadowBlur = 2;
 
   ctx.beginPath();
   ctx.moveTo(anchorX, anchorY);
   ctx.lineTo(tipX, tipY);
   ctx.stroke();
 
-  // Arrow origin marker on forehead.
-  ctx.fillStyle = "#000000";
+  // Anchor dot
+  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
   ctx.beginPath();
-  ctx.arc(anchorX, anchorY, 4, 0, 2 * Math.PI);
+  ctx.arc(anchorX, anchorY, 2.5, 0, 2 * Math.PI);
   ctx.fill();
-
-  const headSize = Math.max(6, Math.min(faceWidth, faceHeight) * 0.06);
-  const dx = tipX - anchorX;
-  const dy = tipY - anchorY;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
-  const px = -uy;
-  const py = ux;
-
-  ctx.beginPath();
-  ctx.moveTo(tipX, tipY);
-  ctx.lineTo(
-    tipX - ux * headSize + px * (headSize * 0.55),
-    tipY - uy * headSize + py * (headSize * 0.55),
-  );
-  ctx.moveTo(tipX, tipY);
-  ctx.lineTo(
-    tipX - ux * headSize - px * (headSize * 0.55),
-    tipY - uy * headSize - py * (headSize * 0.55),
-  );
-  ctx.stroke();
   ctx.shadowBlur = 0;
 
-  const labelFontSize = Math.max(
-    16,
-    Math.round(Math.min(faceWidth, faceHeight) * 0.11),
-  );
-  ctx.font = `600 ${labelFontSize}px ui-sans-serif, system-ui, -apple-system`;
-  const textWidth = ctx.measureText(hex.toUpperCase()).width;
-  const swatchSize = labelFontSize * 0.75;
-  const labelPaddingX = 12;
-  const labelPaddingY = 8;
-  const gap = 8;
-  const labelWidth = labelPaddingX * 2 + swatchSize + gap + textWidth;
-  const labelHeight = labelPaddingY * 2 + labelFontSize;
+  // ── Label — single row: [swatch] TAG · Color Name ──
+  const colorName = hexToColorName(hex);
+  const fontSize = Math.max(13, Math.round(Math.min(faceWidth, faceHeight) * 0.07));
+
+  // Measure combined text: "SKIN · Peach"
+  const tagText = tag ? tag.toUpperCase() : "";
+  const separator = tag ? " · " : "";
+  const hexPart = ` (${hex.toUpperCase()})`;
+  const fullText = tagText + separator + colorName + hexPart;
+
+  ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, -apple-system`;
+  const fullTextWidth = ctx.measureText(fullText).width;
+  // We also need the tag portion width to draw it in a different color
+  const tagPartWidth = tag ? ctx.measureText(tagText + separator).width : 0;
+
+  const swatchSize = fontSize * 0.75;
+  const padX = 10;
+  const padY = 7;
+  const gap = 6;
+
+  const labelWidth = padX * 2 + swatchSize + gap + fullTextWidth;
+  const labelHeight = padY * 2 + fontSize;
 
   const preferredSide =
     forceSide === "auto" ? (directionX >= 0 ? "right" : "left") : forceSide;
   const proposedLabelX =
-    preferredSide === "left" ? tipX - labelWidth - 10 : tipX + 10;
+    preferredSide === "left" ? tipX - labelWidth - 8 : tipX + 8;
   const labelX = clamp(
     proposedLabelX,
     minMargin,
     canvasWidth - labelWidth - minMargin,
   );
-  const rowLabelY = minMargin + labelRow * (labelHeight + 8);
+  const rowLabelY = minMargin + labelRow * (labelHeight + 5);
   const labelY = clamp(
     labelRow >= 0 ? rowLabelY : tipY - labelHeight / 2,
     minMargin,
-    imageTopY - labelHeight - 10,
+    canvasHeight - labelHeight - minMargin,
   );
 
-  drawRoundedRect(ctx, labelX, labelY, labelWidth, labelHeight, 8);
-  ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+  // Background pill
+  drawRoundedRect(ctx, labelX, labelY, labelWidth, labelHeight, 6);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+  ctx.lineWidth = 1;
   ctx.stroke();
 
-  const swatchX = labelX + labelPaddingX;
+  // Color swatch
+  const swatchX = labelX + padX;
   const swatchY = labelY + (labelHeight - swatchSize) / 2;
-  drawRoundedRect(ctx, swatchX, swatchY, swatchSize, swatchSize, 4);
+  drawRoundedRect(ctx, swatchX, swatchY, swatchSize, swatchSize, 3);
   ctx.fillStyle = hex;
   ctx.fill();
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+  ctx.lineWidth = 0.5;
   ctx.stroke();
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.92)";
+  const textX = swatchX + swatchSize + gap;
+  const textY = labelY + labelHeight / 2;
+
+  ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, -apple-system`;
   ctx.textBaseline = "middle";
-  ctx.fillText(
-    hex.toUpperCase(),
-    swatchX + swatchSize + gap,
-    labelY + labelHeight / 2,
-  );
+
+  // Draw tag portion in muted white
+  if (tag) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.fillText(tagText + separator, textX, textY);
+  }
+
+  // Draw color name in bright white
+  ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+  ctx.fillText(colorName, textX + tagPartWidth, textY);
+
+  // Draw hex code in muted white
+  const nameWidth = ctx.measureText(colorName).width;
+  ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+  ctx.fillText(hexPart, textX + tagPartWidth + nameWidth, textY);
 }
 
-// Dynamically load MediaPipe FaceMesh from CDN
-function loadFaceMeshScript() {
-  return new Promise((resolve, reject) => {
-    if (typeof window !== "undefined" && window.FaceMesh) {
-      resolve();
-      return;
-    }
+// Singleton: lazily create a FaceLandmarker and reuse across renders
+let _landmarkerPromise = null;
 
-    const existingScript = document.getElementById(FACE_MESH_SCRIPT_ID);
-    if (existingScript) {
-      existingScript.addEventListener("load", resolve, { once: true });
-      existingScript.addEventListener(
-        "error",
-        () => reject(new Error("Failed to load FaceMesh script")),
-        { once: true },
+function getFaceLandmarker() {
+  if (!_landmarkerPromise) {
+    _landmarkerPromise = FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
+    ).then((vision) =>
+      FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate: "GPU",
+        },
+        runningMode: "IMAGE",
+        numFaces: 1,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false,
+      }),
+    ).catch((err) => {
+      // If GPU delegate fails, retry with CPU
+      console.warn("GPU delegate failed, falling back to CPU:", err);
+      _landmarkerPromise = null;
+      return FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
+      ).then((vision) =>
+        FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "CPU",
+          },
+          runningMode: "IMAGE",
+          numFaces: 1,
+          outputFaceBlendshapes: false,
+          outputFacialTransformationMatrixes: false,
+        }),
       );
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = FACE_MESH_SCRIPT_ID;
-    script.src =
-      "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js";
-    script.async = true;
-    script.defer = true;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("Failed to load FaceMesh script"));
-    document.head.appendChild(script);
-  });
+    });
+  }
+  return _landmarkerPromise;
 }
 
 export default function FaceGrid({ imageSrc }) {
   const canvasRef = useRef(null);
-  const imgRef = useRef(null);
+  const loadedImgRef = useRef(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isCancelled = false;
-    let faceMeshInstance = null;
 
     const drawScene = (results) => {
       const canvas = canvasRef.current;
-      const img = imgRef.current;
+      const img = loadedImgRef.current;
       if (!canvas || !img) return;
 
-      const width = img.naturalWidth;
-      const height = img.naturalHeight;
+      const imgW = img.naturalWidth || img.width;
+      const imgH = img.naturalHeight || img.height;
 
-      canvas.width = width;
-      canvas.height = height + TOP_OVERLAY_SPACE;
+      // Canvas = image + padding on all sides for labels
+      const canvasW = imgW + IMG_PADDING_SIDE * 2;
+      const canvasH = imgH + IMG_PADDING_TOP + IMG_PADDING_BOTTOM;
+
+      canvas.width = canvasW;
+      canvas.height = canvasH;
 
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      // Draw the image
-      ctx.clearRect(0, 0, width, canvas.height);
-      ctx.fillStyle = "rgba(12, 14, 22, 0.9)";
-      ctx.fillRect(0, 0, width, TOP_OVERLAY_SPACE);
-      ctx.drawImage(img, 0, TOP_OVERLAY_SPACE, width, height);
+      // Dark background behind padding area
+      ctx.fillStyle = "rgba(14, 13, 18, 1)";
+      ctx.fillRect(0, 0, canvasW, canvasH);
+
+      // Draw image offset by padding
+      ctx.drawImage(img, IMG_PADDING_SIDE, IMG_PADDING_TOP, imgW, imgH);
 
       if (results?.multiFaceLandmarks?.length) {
         const landmarks = results.multiFaceLandmarks[0];
-        drawFaceGuides(ctx, landmarks, width, height, TOP_OVERLAY_SPACE);
+        drawFaceGuides(ctx, landmarks, imgW, imgH, IMG_PADDING_TOP);
       }
 
       setLoading(false);
     };
 
     const drawFaceGuides = (ctx, landmarks, width, height, yOffset) => {
-      const xs = landmarks.map((p) => p.x * width);
+      const xOff = IMG_PADDING_SIDE;
+      const xs = landmarks.map((p) => p.x * width + xOff);
       const ys = landmarks.map((p) => p.y * height + yOffset);
 
       const minX = Math.min(...xs);
@@ -536,7 +627,7 @@ export default function FaceGrid({ imageSrc }) {
         minY,
         faceWidth,
         faceHeight,
-        yOffset,
+        0,
         yOffset + height,
       );
       const leftTemple = landmarks[234];
@@ -555,8 +646,8 @@ export default function FaceGrid({ imageSrc }) {
           continue;
         }
 
-        ctx.moveTo(from.x * width, from.y * height + yOffset);
-        ctx.lineTo(to.x * width, to.y * height + yOffset);
+        ctx.moveTo(from.x * width + xOff, from.y * height + yOffset);
+        ctx.lineTo(to.x * width + xOff, to.y * height + yOffset);
       }
 
       for (const row of hairRows) {
@@ -587,9 +678,9 @@ export default function FaceGrid({ imageSrc }) {
 
       const bottomHairRow = hairRows[0];
       if (bottomHairRow && leftTemple && rightTemple) {
-        const leftTempleX = leftTemple.x * width;
+        const leftTempleX = leftTemple.x * width + xOff;
         const leftTempleY = leftTemple.y * height + yOffset;
-        const rightTempleX = rightTemple.x * width;
+        const rightTempleX = rightTemple.x * width + xOff;
         const rightTempleY = rightTemple.y * height + yOffset;
 
         ctx.moveTo(leftTempleX, leftTempleY);
@@ -619,13 +710,13 @@ export default function FaceGrid({ imageSrc }) {
             continue;
           }
 
-          ctx.moveTo(bridgePoint.x * width, bridgePoint.y * height + yOffset);
+          ctx.moveTo(bridgePoint.x * width + xOff, bridgePoint.y * height + yOffset);
           ctx.lineTo(hairPoint.x, hairPoint.y);
         }
       }
 
       if (bottomHairRow && foreheadCenter) {
-        const foreheadX = foreheadCenter.x * width;
+        const foreheadX = foreheadCenter.x * width + xOff;
         const foreheadY = foreheadCenter.y * height + yOffset;
         const centerHair = bottomHairRow[Math.floor(bottomHairRow.length / 2)];
         ctx.moveTo(foreheadX, foreheadY);
@@ -642,7 +733,7 @@ export default function FaceGrid({ imageSrc }) {
         }
 
         ctx.beginPath();
-        ctx.arc(point.x * width, point.y * height + yOffset, 2, 0, 2 * Math.PI);
+        ctx.arc(point.x * width + xOff, point.y * height + yOffset, 2, 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -653,6 +744,10 @@ export default function FaceGrid({ imageSrc }) {
           ctx.fill();
         }
       }
+
+      // ---- Full canvas dimensions for labels/sampling ----
+      const cW = width + IMG_PADDING_SIDE * 2;
+      const cH = height + yOffset + IMG_PADDING_BOTTOM;
 
       // ---- Corner Brackets Around Face ----
       const bracketPaddingX = faceWidth * 0.26;
@@ -668,7 +763,7 @@ export default function FaceGrid({ imageSrc }) {
       const fallbackAnchorX = minX + faceWidth * 0.5;
       const fallbackAnchorY = minY + faceHeight * 0.18;
       const anchorX = foreheadAnchor
-        ? foreheadAnchor.x * width
+        ? foreheadAnchor.x * width + xOff
         : fallbackAnchorX;
       const anchorY = foreheadAnchor
         ? foreheadAnchor.y * height + yOffset
@@ -708,11 +803,11 @@ export default function FaceGrid({ imageSrc }) {
           ctx,
           hairSamplePoints,
           faceWidth * 0.022,
-          width,
-          height + yOffset,
+          cW,
+          cH,
         ) ?? "#5F4A3F";
 
-      const sampleX = foreheadSample ? foreheadSample.x * width : anchorX;
+      const sampleX = foreheadSample ? foreheadSample.x * width + xOff : anchorX;
       const sampleY = foreheadSample
         ? foreheadSample.y * height + yOffset + faceHeight * 0.02
         : anchorY;
@@ -721,13 +816,13 @@ export default function FaceGrid({ imageSrc }) {
         sampleX,
         sampleY,
         faceWidth * 0.035,
-        width,
-        height + yOffset,
+        cW,
+        cH,
       );
       const skinHex = sampledHex ?? "#C79A7B";
 
       const lipAnchor = landmarks[13] ?? landmarks[14] ?? landmarks[0];
-      const lipAnchorX = lipAnchor ? lipAnchor.x * width : anchorX;
+      const lipAnchorX = lipAnchor ? lipAnchor.x * width + xOff : anchorX;
       const lipAnchorY = lipAnchor
         ? lipAnchor.y * height + yOffset
         : anchorY + faceHeight * 0.28;
@@ -740,6 +835,7 @@ export default function FaceGrid({ imageSrc }) {
           width,
           height,
           yOffset,
+          xOff,
         ) ?? "#B76D74";
 
       drawForeheadHexArrow(
@@ -748,14 +844,15 @@ export default function FaceGrid({ imageSrc }) {
         anchorY,
         faceWidth,
         faceHeight,
-        yOffset,
-        width,
-        height + yOffset,
+        0,
+        cW,
+        cH,
         skinHex,
         1,
         0.45,
         0,
         "right",
+        "Skin",
       );
 
       drawForeheadHexArrow(
@@ -764,14 +861,15 @@ export default function FaceGrid({ imageSrc }) {
         lipAnchorY,
         faceWidth,
         faceHeight,
-        yOffset,
-        width,
-        height + yOffset,
+        0,
+        cW,
+        cH,
         lipHex,
         -1,
         0.72,
         1,
         "left",
+        "Lips",
       );
 
       drawForeheadHexArrow(
@@ -780,14 +878,15 @@ export default function FaceGrid({ imageSrc }) {
         hairAnchorY,
         faceWidth,
         faceHeight,
-        yOffset,
-        width,
-        height + yOffset,
+        0,
+        cW,
+        cH,
         hairHex,
         1,
         0.34,
         2,
         "right",
+        "Hair",
       );
     };
 
@@ -824,69 +923,58 @@ export default function FaceGrid({ imageSrc }) {
     };
 
     const setupFaceMesh = async () => {
-      const img = imgRef.current;
-      if (!img) return;
+      // Load image entirely in JS
+      const img = new window.Image();
+      // Only set crossOrigin for http(s) URLs — blob/data URLs don't need it
+      if (imageSrc?.startsWith("http")) {
+        img.crossOrigin = "anonymous";
+      }
+      img.src = imageSrc;
 
-      await loadFaceMeshScript();
-      if (isCancelled || !window.FaceMesh) return;
-
-      faceMeshInstance = new window.FaceMesh({
-        locateFile: (file) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
       });
 
-      faceMeshInstance.setOptions({
-        staticImageMode: true,
-        maxNumFaces: 1,
-        refineLandmarks: true,
-        minDetectionConfidence: 0.5,
-      });
+      if (isCancelled) return;
+      loadedImgRef.current = img;
 
-      faceMeshInstance.onResults(drawScene);
+      const landmarker = await getFaceLandmarker();
+      if (isCancelled) return;
 
-      const processImage = async () => {
-        await faceMeshInstance.send({ image: img });
-      };
+      // FaceLandmarker.detect() accepts an HTMLImageElement directly
+      const result = landmarker.detect(img);
 
-      if (img.complete) {
-        processImage();
+      if (result?.faceLandmarks?.length) {
+        // Convert FaceLandmarker landmarks to the format drawScene expects:
+        // { multiFaceLandmarks: [ [ { x, y, z }, ... ] ] }
+        const landmarks = result.faceLandmarks[0];
+        drawScene({ multiFaceLandmarks: [landmarks] });
       } else {
-        img.onload = processImage;
+        // No face found — just show the image
+        drawScene({ multiFaceLandmarks: [] });
       }
     };
 
-    setupFaceMesh();
+    setupFaceMesh().catch(() => setLoading(false));
 
     return () => {
       isCancelled = true;
-      if (faceMeshInstance?.close) {
-        faceMeshInstance.close();
-      }
     };
   }, [imageSrc]);
 
   return (
-    <div className="relative w-full flex items-center justify-center">
+    <div className="relative w-full h-full flex items-center justify-center">
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">
           Detecting face...
         </div>
       )}
 
-      {/* Hidden image for processing */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        ref={imgRef}
-        src={imageSrc}
-        alt="Headshot"
-        className="hidden"
-        crossOrigin="anonymous"
-      />
-
       {/* Canvas displaying the result */}
       <canvas
         ref={canvasRef}
-        className="w-full h-auto object-contain rounded-lg"
+        className="max-w-full max-h-full object-contain rounded-lg"
       />
     </div>
   );

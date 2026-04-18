@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { Bodoni_Moda } from "next/font/google";
+import { Toaster } from "sonner";
 import {
   EllipsisVertical,
   Layers3,
@@ -1859,7 +1860,7 @@ function ExplorePreviewScreen({
 
 export function PhiaWorkspace() {
   const [deviceView, setDeviceView] = useState<"phone" | "desktop">("phone");
-  const [previewStage, setPreviewStage] = useState<PreviewStage>("idle");
+  const [previewStage, setPreviewStage] = useState<PreviewStage>("splash");
   const [activeTab, setActiveTab] = useState<PreviewTab>("Explore");
   const [view, setView] = useState(DEFAULT_VIEW);
   const [history, setHistory] = useState<ViewState[]>([DEFAULT_VIEW]);
@@ -2350,6 +2351,7 @@ export function PhiaWorkspace() {
 
   return (
     <div className="dark min-h-screen bg-[#0E0D12] text-white">
+      <Toaster position="bottom-right" richColors theme="dark" />
       <SidebarProvider defaultOpen={false}>
         <AppSidebar />
         <SidebarInset className="min-h-screen bg-[#0E0D12] text-white md:m-0 md:rounded-none md:shadow-none">

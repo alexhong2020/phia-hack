@@ -8,13 +8,11 @@ import {
   Layers3,
   Maximize,
   Minus,
-  MoreHorizontal,
   RotateCcw,
   ThumbsDown,
   ThumbsUp,
   Undo2,
   ZoomIn,
-  Camera,
 } from "lucide-react";
 import {
   RiArrowRightSLine,
@@ -40,16 +38,10 @@ import {
   RiSettingsLine,
   RiShare2Line,
   RiShirtLine,
-  RiShoppingBagFill,
   RiShoppingBagLine,
   RiSignalWifi3Fill,
   RiSmartphoneFill,
-  RiUser3Line,
   RiUser4Line,
-  RiFireLine,
-  RiMagicLine,
-  RiSparklingFill,
-  RiHistoryLine,
 } from "@remixicon/react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
@@ -399,7 +391,7 @@ function ExplorePreviewScreen({
   topRoundedClassName?: string;
   showStatusBar?: boolean;
 }) {
-  type PreviewBottomNav = "home" | "search" | "shop" | "saved" | "profile";
+  type PreviewBottomNav = "home" | "search" | "cart" | "saved" | "profile";
   type SavedMode = "Wishlists" | "Items" | "Brands";
   const tabItems = activeTab === "Explore" ? items : [];
   const trendCarouselRef = useRef<HTMLDivElement | null>(null);
@@ -410,34 +402,37 @@ function ExplorePreviewScreen({
     useState<SavedMode>("Wishlists");
   const [selectedSignalItem, setSelectedSignalItem] =
     useState<TrendCard | null>(null);
-
-  // Social Fitting Room State
-  const [activeFitCheckIdx, setActiveFitCheckIdx] = useState(0);
-  const [isEnhancing, setIsEnhancing] = useState(false);
-  const [fitCheckSessions, setFitCheckSessions] = useState([
-    { id: "1", brand: "BROOKS", productName: "Ghost 16", price: "$140.00", userPic: "pic1", isAiEnhanced: false, votes: { cop: 12, drop: 2 }, comments: [{ user: "Kaylie", text: "Matches the Duke vibe perfectly. COP!!" }] },
-    { id: "2", brand: "ADIDAS", productName: "Samba OG", price: "$100.00", userPic: "pic2", isAiEnhanced: false, votes: { cop: 45, drop: 3 }, comments: [{ user: "Quante", text: "Classic. Can't go wrong." }] },
-    { id: "3", brand: "BRAVES", productName: "Home Jersey", price: "$175.00", userPic: "pic3", isAiEnhanced: false, votes: { cop: 8, drop: 15 }, comments: [] },
-    { id: "4", brand: "PATAGONIA", productName: "¼-Zip", price: "$139.00", userPic: "pic4", isAiEnhanced: false, votes: { cop: 22, drop: 1 }, comments: [] },
-    { id: "5", brand: "NIKE", productName: "Tech Fleece", price: "$145.00", userPic: "pic5", isAiEnhanced: false, votes: { cop: 30, drop: 12 }, comments: [{ user: "Adam", text: "The fit looks a bit oversized." }] },
-  ]);
-
-  const currentFitCheck = fitCheckSessions[activeFitCheckIdx];
-
-  const handleAiEnhance = () => {
-    setIsEnhancing(true);
-    setTimeout(() => {
-      const updated = [...fitCheckSessions];
-      updated[activeFitCheckIdx].isAiEnhanced = true;
-      setFitCheckSessions(updated);
-      setIsEnhancing(false);
-    }, 1800);
+  type ProductDetail = {
+    imageUrl: string;
+    name: string;
+    brand: string;
+    description: string;
+    linkUrl: string;
+    details: Array<{ label: string; value: string }>;
   };
+  const [selectedProduct, setSelectedProduct] =
+    useState<ProductDetail | null>(null);
 
-  const handleVote = (type: "cop" | "drop") => {
-    const updated = [...fitCheckSessions];
-    updated[activeFitCheckIdx].votes[type] += 1;
-    setFitCheckSessions(updated);
+  const openProduct = (p: {
+    imageUrl: string;
+    name?: string;
+    title?: string;
+    brand?: string;
+    primaryBrandName?: string;
+    description?: string;
+    linkUrl?: string;
+    detailRows?: Array<{ label: string; value: string }>;
+  }) => {
+    setSelectedProduct({
+      imageUrl: p.imageUrl,
+      name: p.name || p.title || "Untitled",
+      brand: p.brand || p.primaryBrandName || "",
+      description: p.description || "",
+      linkUrl: p.linkUrl || "",
+      details: (p.detailRows || []).filter(
+        (r) => r.label !== "ID" && r.label !== "Type" && r.label !== "Variant",
+      ),
+    });
   };
 
   const [statusTime, setStatusTime] = useState(() =>
@@ -497,11 +492,15 @@ function ExplorePreviewScreen({
     }
   };
 
+  const phoneScrollRef = useRef<HTMLDivElement>(null);
+
   return (
     <div
+      ref={phoneScrollRef}
       className={cn(
         "relative h-full overflow-y-auto bg-[#ECECEC] text-[#101010]",
         topRoundedClassName,
+        selectedProduct && "!overflow-hidden",
       )}
     >
       <div
@@ -641,148 +640,6 @@ function ExplorePreviewScreen({
           </div>
         ) : activeBottomNav === "profile" ? (
           <div className={cn(showStatusBar ? "mt-2 h-2" : "h-2")} />
-        ) : activeBottomNav === "shop" ? (
-          <div className="flex flex-col h-full bg-[#FDFDFD]">
-            {/* Header: Social Context */}
-            <header className="px-6 py-4 bg-white border-b flex justify-between items-center">
-              <div className="flex flex-col">
-                <h2 className="text-xl font-black italic tracking-tighter">PHIA</h2>
-                <div className="flex items-center gap-1.5 text-[10px] text-green-600 font-bold uppercase tracking-widest">
-                  <span className="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                  6 Friends Voting
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" className="p-2 bg-zinc-100 rounded-full active:scale-90 transition-transform">
-                  <RiHistoryLine className="size-5 text-zinc-600" />
-                </button>
-                <button type="button" className="p-2 bg-zinc-100 rounded-full active:scale-90 transition-transform">
-                  <RiShare2Line className="size-5 text-zinc-600" />
-                </button>
-              </div>
-            </header>
-
-            {/* Social Feed: The "Fit Check" */}
-            <main className="relative flex-1 p-4 flex flex-col justify-center">
-              <div className={cn(
-                "relative w-full aspect-[3/4] rounded-[40px] overflow-hidden shadow-2xl transition-all duration-700",
-                currentFitCheck.isAiEnhanced ? "ring-4 ring-indigo-400 ring-offset-4" : "bg-zinc-200"
-              )}>
-
-                {/* Image Placeholder Layer */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-300">
-                  {isEnhancing ? (
-                    <div className="flex flex-col items-center gap-3">
-                      <RiSparklingFill className="size-10 text-indigo-500 animate-bounce" />
-                      <p className="text-xs font-black text-indigo-600 uppercase tracking-tighter">Nano Banana AI Rendering...</p>
-                    </div>
-                  ) : (
-                    <span className="text-zinc-500 font-mono text-xl">{currentFitCheck.userPic}</span>
-                  )}
-
-                  {/* AI Label */}
-                  {currentFitCheck.isAiEnhanced && !isEnhancing && (
-                    <div className="absolute top-6 left-6 bg-indigo-600 text-white px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1.5 shadow-xl animate-in fade-in zoom-in">
-                      <RiMagicLine className="size-3" /> AI GENERATED PDP
-                    </div>
-                  )}
-                </div>
-
-                {/* AI MAGIC BUTTON */}
-                {!currentFitCheck.isAiEnhanced && !isEnhancing && (
-                  <button
-                    type="button"
-                    onClick={handleAiEnhance}
-                    className="absolute top-6 right-6 group flex items-center gap-2 bg-black/30 backdrop-blur-xl border border-white/20 p-2.5 rounded-full hover:bg-indigo-600 transition-all overflow-hidden max-w-[44px] hover:max-w-[200px]"
-                  >
-                    <RiMagicLine className="size-6 text-white" />
-                    <span className="text-[11px] font-bold text-white whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">AI Studio Glow-up</span>
-                  </button>
-                )}
-
-                {/* PRODUCT OVERLAY */}
-                <div className="absolute bottom-6 left-6 right-6">
-                  <div className="bg-white/80 backdrop-blur-2xl p-4 rounded-3xl border border-white/40 flex justify-between items-center shadow-xl">
-                    <div className="space-y-0.5">
-                      <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">{currentFitCheck.brand}</p>
-                      <p className="text-sm font-bold text-black leading-tight">{currentFitCheck.productName}</p>
-                      <p className="text-sm font-semibold text-zinc-600 italic">{currentFitCheck.price}</p>
-                    </div>
-                    <button type="button" className="bg-black text-white px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-tighter active:scale-95 transition-transform">
-                      Cop Now
-                    </button>
-                  </div>
-                </div>
-
-                {/* INSTAGRAM INTERACTION OVERLAY */}
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-5">
-                  <div className="flex flex-col items-center">
-                    <button
-                      type="button"
-                      onClick={() => handleVote("cop")}
-                      className={cn(
-                        "size-12 rounded-full flex items-center justify-center text-white transition-all active:scale-75 shadow-lg",
-                        currentFitCheck.votes.cop > 0
-                          ? "bg-green-500 border-2 border-white"
-                          : "bg-black/60 border border-white/40 hover:bg-green-500"
-                      )}
-                    >
-                      <ThumbsUp className="size-6 fill-current" />
-                    </button>
-                    <span className="text-[10px] font-black text-white mt-1.5 drop-shadow-lg tracking-tighter">{currentFitCheck.votes.cop}</span>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <button
-                      type="button"
-                      onClick={() => handleVote("drop")}
-                      className={cn(
-                        "size-12 rounded-full flex items-center justify-center text-white transition-all active:scale-75 shadow-lg",
-                        currentFitCheck.votes.drop > 0
-                          ? "bg-red-500 border-2 border-white"
-                          : "bg-black/60 border border-white/40 hover:bg-red-500"
-                      )}
-                    >
-                      <ThumbsDown className="size-6 fill-current" />
-                    </button>
-                    <span className="text-[10px] font-black text-white mt-1.5 drop-shadow-lg tracking-tighter">{currentFitCheck.votes.drop}</span>
-                  </div>
-                  <button type="button" className="size-12 rounded-full bg-black/60 border border-white/40 flex items-center justify-center text-white shadow-lg">
-                    <MoreHorizontal className="size-6" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Progress Slider */}
-              <div className="flex justify-center gap-2 mt-8">
-                {fitCheckSessions.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setActiveFitCheckIdx(i)}
-                    className={cn(
-                      "h-1.5 transition-all duration-300 rounded-full",
-                      i === activeFitCheckIdx ? "w-10 bg-black" : "w-1.5 bg-zinc-200 hover:bg-zinc-400"
-                    )}
-                  />
-                ))}
-              </div>
-            </main>
-
-            {/* Comment Section Peek */}
-            <footer className="bg-white px-6 pt-2 pb-6 rounded-t-[40px] shadow-[0_-10px_40px_rgba(0,0,0,0.04)] border-t">
-              <div className="w-12 h-1 bg-zinc-200 rounded-full mx-auto my-3" />
-              <div className="flex items-start gap-3">
-                <div className="size-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs border border-indigo-200">K</div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-[12px] leading-snug">
-                    <span className="font-bold text-black mr-2">Kaylie</span>
-                    Matches the Duke vibe perfectly. COP!!
-                  </p>
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase">2m ago • Reply</p>
-                </div>
-              </div>
-            </footer>
-          </div>
         ) : (
           <>
             <div
@@ -971,7 +828,8 @@ function ExplorePreviewScreen({
                     {trendItems.slice(0, 8).map((item) => (
                       <article
                         key={`${item.id}-saved-item`}
-                        className="mb-2 break-inside-avoid rounded-xl bg-white p-0.75"
+                        className="mb-2 break-inside-avoid rounded-xl bg-white p-0.75 cursor-pointer"
+                        onClick={() => openProduct(item)}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -1208,7 +1066,8 @@ function ExplorePreviewScreen({
                     {searchLookCards.map((item) => (
                       <article
                         key={item.id}
-                        className="relative h-[150px] w-[214px] shrink-0 overflow-hidden rounded-[14px] bg-white"
+                        className="relative h-[150px] w-[214px] shrink-0 overflow-hidden rounded-[14px] bg-white cursor-pointer"
+                        onClick={() => openProduct(item)}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -1314,7 +1173,8 @@ function ExplorePreviewScreen({
                   {curatedTypes.map((item) => (
                     <article
                       key={item.id}
-                      className="relative h-[230px] w-[165px] shrink-0 overflow-hidden rounded-t-[90px] rounded-b-[16px] bg-white"
+                      className="relative h-[230px] w-[165px] shrink-0 overflow-hidden rounded-t-[90px] rounded-b-[16px] bg-white cursor-pointer"
+                      onClick={() => openProduct(item)}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -1367,11 +1227,10 @@ function ExplorePreviewScreen({
                 <div className="mt-3 columns-2 gap-2 [column-fill:_balance]">
                   {trendItems.map((item) => (
                     <article key={item.id} className="mb-2 break-inside-avoid">
-                      <a
-                        href={item.linkUrl || undefined}
-                        target={item.linkUrl ? "_blank" : undefined}
-                        rel={item.linkUrl ? "noreferrer" : undefined}
-                        className="block"
+                      <button
+                        type="button"
+                        onClick={() => openProduct(item)}
+                        className="block w-full text-left"
                       >
                         <div className="relative rounded-2xl bg-white p-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1386,7 +1245,7 @@ function ExplorePreviewScreen({
                             <RiBookmarkLine className="size-4" />
                           </span>
                         </div>
-                      </a>
+                      </button>
 
                       <div className="flex items-center gap-3 px-1.5 py-1.5 text-black/58">
                         <button type="button" aria-label="Like">
@@ -1436,7 +1295,8 @@ function ExplorePreviewScreen({
                     {trendingCollections.map((item) => (
                       <article
                         key={item.id}
-                        className="relative h-[190px] w-[260px] shrink-0 overflow-hidden rounded-xl bg-white"
+                        className="relative h-[190px] w-[260px] shrink-0 overflow-hidden rounded-xl bg-white cursor-pointer"
+                        onClick={() => openProduct({ imageUrl: item.imageUrl, title: item.title, linkUrl: item.products[0]?.linkUrl || "" })}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -1531,11 +1391,10 @@ function ExplorePreviewScreen({
                               key={`${item.id}-trending-with-phia`}
                               className="w-[168px] shrink-0"
                             >
-                              <a
-                                href={item.linkUrl || undefined}
-                                target={item.linkUrl ? "_blank" : undefined}
-                                rel={item.linkUrl ? "noreferrer" : undefined}
-                                className="block"
+                              <button
+                                type="button"
+                                onClick={() => openProduct(item)}
+                                className="block w-full text-left"
                               >
                                 <div className="relative rounded-[18px] bg-white p-1">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1551,7 +1410,7 @@ function ExplorePreviewScreen({
                                     {viewCount}
                                   </span>
                                 </div>
-                              </a>
+                              </button>
 
                               <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.08em] text-black/45">
                                 {item.brand || "Phia"}
@@ -1647,7 +1506,8 @@ function ExplorePreviewScreen({
             {tabItems.map((item) => (
               <article
                 key={item.id}
-                className="mb-2 break-inside-avoid rounded-2xl bg-white p-1"
+                className="mb-2 break-inside-avoid rounded-2xl bg-white p-1 cursor-pointer"
+                onClick={() => openProduct(item)}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -1673,6 +1533,116 @@ function ExplorePreviewScreen({
           </div>
         )}
       </div>
+
+      {/* ── Product Detail View ── */}
+      {selectedProduct ? (() => {
+        const price = selectedProduct.details.find((r) => r.label === "Price")?.value ?? null;
+
+        return (
+          <div className="absolute left-0 right-0 z-50 flex flex-col bg-[#F5F5F5] rounded-t-[48px]" style={{ top: phoneScrollRef.current?.scrollTop ?? 0, height: phoneScrollRef.current?.clientHeight ?? "100%" }}>
+            {/* Product image with padding */}
+            <div className="relative p-3 pt-4 shrink-0">
+              <div className="relative overflow-hidden rounded-3xl bg-white">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={selectedProduct.imageUrl}
+                  alt={selectedProduct.name}
+                  className="w-full aspect-[1/1] object-cover"
+                />
+
+                {/* Price badge */}
+                {price && (
+                  <div className="absolute left-3 bottom-3 rounded-full bg-black/70 backdrop-blur-sm px-2.5 py-1">
+                    <span className="text-[12px] font-semibold text-white">{price}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Back button */}
+              <button
+                type="button"
+                onClick={() => setSelectedProduct(null)}
+                className="absolute left-6 top-7 flex size-8 items-center justify-center rounded-full bg-white/85 backdrop-blur-sm shadow-sm"
+              >
+                <RiArrowRightSLine className="size-4 rotate-180 text-black/70" />
+              </button>
+
+              {/* Bookmark */}
+              <button
+                type="button"
+                className="absolute right-6 top-7 flex size-8 items-center justify-center rounded-full bg-white/85 backdrop-blur-sm shadow-sm"
+              >
+                <RiBookmarkLine className="size-3.5 text-black/70" />
+              </button>
+            </div>
+
+            {/* Product info */}
+            <div className="px-4 pt-2 pb-6 space-y-3 overflow-y-auto flex-1 min-h-0">
+              {/* Brand & name */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/40">
+                  {selectedProduct.brand}
+                </p>
+                <h2 className="mt-0.5 text-[15px] font-semibold leading-snug text-black/90">
+                  {selectedProduct.name}
+                </h2>
+              </div>
+
+              {/* Description */}
+              {selectedProduct.description && (
+                <p className="text-[12px] leading-relaxed text-black/50">
+                  {selectedProduct.description}
+                </p>
+              )}
+
+              {/* Detail pills */}
+              {selectedProduct.details.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedProduct.details.map((row: { label: string; value: string }) => (
+                    <div
+                      key={row.label}
+                      className="flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px]"
+                    >
+                      <span className="font-medium text-black/35">{row.label}</span>
+                      <span className="font-semibold text-black/70">{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black py-2.5 text-[12px] font-semibold text-white"
+                >
+                  <RiShoppingBagLine className="size-3.5" />
+                  Add to Bag
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center justify-center rounded-xl bg-white px-3 py-2.5"
+                >
+                  <RiShare2Line className="size-4 text-black/50" />
+                </button>
+              </div>
+
+              {/* Visit store link */}
+              {selectedProduct.linkUrl && (
+                <a
+                  href={selectedProduct.linkUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-black/8 py-2 text-[11px] font-medium text-black/50"
+                >
+                  <RiLink className="size-3" />
+                  Visit Store
+                </a>
+              )}
+            </div>
+          </div>
+        );
+      })() : null}
 
       {selectedSignalItem && activeBottomNav === "home" ? (
         <div className="absolute inset-0 z-40">
@@ -1778,15 +1748,15 @@ function ExplorePreviewScreen({
         </div>
       ) : null}
 
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-[90%] z-50">
-        <nav className="flex items-center justify-around bg-white/70 backdrop-blur-2xl border border-white/40 p-2 rounded-[32px] shadow-2xl">
+      <div className="sticky bottom-3 z-30 px-3 pb-2">
+        <nav className="mx-auto flex h-12 max-w-[340px] items-center rounded-full bg-[#F1F1F1]/95 px-2 shadow-[0_12px_28px_rgba(0,0,0,0.15)] backdrop-blur">
           <button
             type="button"
             onClick={() => handleBottomNavSelection("home")}
             className={cn(
-              "flex h-11 flex-1 items-center justify-center rounded-2xl transition-all",
+              "flex h-9 flex-1 items-center justify-center rounded-full",
               activeBottomNav === "home"
-                ? "bg-white text-blue-600 shadow-lg"
+                ? "bg-white text-[#2563eb] shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
                 : "text-black/35",
             )}
             aria-label="Home"
@@ -1797,9 +1767,9 @@ function ExplorePreviewScreen({
             type="button"
             onClick={() => handleBottomNavSelection("search")}
             className={cn(
-              "flex h-11 flex-1 items-center justify-center rounded-2xl transition-all",
+              "flex h-9 flex-1 items-center justify-center rounded-full",
               activeBottomNav === "search"
-                ? "bg-white text-blue-600 shadow-lg"
+                ? "bg-white text-[#2563eb] shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
                 : "text-black/35",
             )}
             aria-label="Discover"
@@ -1808,31 +1778,24 @@ function ExplorePreviewScreen({
           </button>
           <button
             type="button"
-            onClick={() => handleBottomNavSelection("shop")}
+            onClick={() => handleBottomNavSelection("cart")}
             className={cn(
-              "flex h-11 flex-1 items-center justify-center rounded-2xl transition-all relative",
-              activeBottomNav === "shop"
-                ? "bg-white text-blue-600 shadow-lg"
+              "flex h-9 flex-1 items-center justify-center rounded-full",
+              activeBottomNav === "cart"
+                ? "bg-white text-[#2563eb] shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
                 : "text-black/35",
             )}
-            aria-label="Shop"
+            aria-label="Cart"
           >
-            {activeBottomNav === "shop" ? (
-              <RiShoppingBagFill className="size-6 text-blue-600" />
-            ) : (
-              <RiShoppingBagLine className="size-5" />
-            )}
-            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
-              2
-            </span>
+            <RiShoppingBagLine className="size-5" />
           </button>
           <button
             type="button"
             onClick={() => handleBottomNavSelection("saved")}
             className={cn(
-              "flex h-11 flex-1 items-center justify-center rounded-2xl transition-all",
+              "flex h-9 flex-1 items-center justify-center rounded-full",
               activeBottomNav === "saved"
-                ? "bg-white text-blue-600 shadow-lg"
+                ? "bg-white text-[#2563eb] shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
                 : "text-black/35",
             )}
             aria-label="Saved"
@@ -1843,9 +1806,9 @@ function ExplorePreviewScreen({
             type="button"
             onClick={() => handleBottomNavSelection("profile")}
             className={cn(
-              "flex h-11 flex-1 items-center justify-center rounded-2xl transition-all",
+              "flex h-9 flex-1 items-center justify-center rounded-full",
               activeBottomNav === "profile"
-                ? "bg-white text-blue-600 shadow-lg"
+                ? "bg-white text-[#2563eb] shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
                 : "text-black/35",
             )}
             aria-label="Profile"
@@ -2463,13 +2426,13 @@ export function PhiaWorkspace() {
                   style={
                     showGrid
                       ? {
-                        backgroundImage: DOT_PATTERN,
-                        backgroundRepeat: "repeat",
-                        transform: `translate(${view.x}px, ${view.y}px)`,
-                      }
+                          backgroundImage: DOT_PATTERN,
+                          backgroundRepeat: "repeat",
+                          transform: `translate(${view.x}px, ${view.y}px)`,
+                        }
                       : {
-                        transform: `translate(${view.x}px, ${view.y}px)`,
-                      }
+                          transform: `translate(${view.x}px, ${view.y}px)`,
+                        }
                   }
                 />
 

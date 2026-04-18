@@ -68,6 +68,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { useProfileStore, type UserPreferences } from "@/lib/store";
 
 type ViewState = {
   x: number;
@@ -366,6 +367,311 @@ function WorkspaceControlButton({
   );
 }
 
+// ─── Product Detail Overlay with Try-On ──────────────────────────────────────
+
+function ProductDetailOverlay({
+  product,
+  scrollTop,
+  containerHeight,
+  onClose,
+  userPhotos,
+}: {
+  product: {
+    imageUrl: string;
+    name: string;
+    brand: string;
+    description: string;
+    linkUrl: string;
+    details: Array<{ label: string; value: string }>;
+  };
+  scrollTop: number;
+  containerHeight: number | string;
+  onClose: () => void;
+  userPhotos: UserPreferences;
+}) {
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [tryOnImage, setTryOnImage] = useState<string | null>(null);
+  const [tryOnLoading, setTryOnLoading] = useState(false);
+  const [tryOnError, setTryOnError] = useState<string | null>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
+
+  const price = product.details.find((r) => r.label === "Price")?.value ?? null;
+
+  // Use only full-body onboarding uploads for virtual try-on.
+  const fullBodyImageUrls = userPhotos.photos?.["full-body"] ?? [];
+  const hasTryOnImage = tryOnImage !== null;
+  const hasFullBodyPhoto = fullBodyImageUrls.length > 0;
+
+  // Build carousel images array
+  const images: { src: string; label: string }[] = [
+    { src: product.imageUrl, label: "Product" },
+  ];
+  if (tryOnImage) {
+    images.push({ src: tryOnImage, label: "Try On" });
+  }
+
+  const handleTryOn = async () => {
+    if (!hasFullBodyPhoto) return;
+    setTryOnLoading(true);
+    setTryOnError(null);
+
+    try {
+      const res = await fetch("/api/virtual-tryon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productImageUrl: product.imageUrl,
+          userImageUrls: fullBodyImageUrls.slice(0, 1),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        setTryOnError(err.error || "Try-on failed");
+        return;
+      }
+
+      const data = await res.json();
+      setTryOnImage(data.tryOn ?? null);
+
+      // Auto-scroll to try-on image
+      if (data.tryOn) {
+        setTimeout(() => {
+          scrollToSlide(1);
+        }, 100);
+      }
+    } catch {
+      setTryOnError("Something went wrong");
+    } finally {
+      setTryOnLoading(false);
+    }
+  };
+
+  const scrollToSlide = (index: number) => {
+    if (!carouselRef.current) return;
+    const slideWidth = carouselRef.current.clientWidth;
+    carouselRef.current.scrollTo({
+      left: index * slideWidth,
+      behavior: "smooth",
+    });
+    setActiveSlide(index);
+  };
+
+  const handleCarouselScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const slideWidth = el.clientWidth;
+    const index = Math.round(el.scrollLeft / slideWidth);
+    setActiveSlide(Math.max(0, Math.min(index, images.length - 1)));
+  };
+
+  return (
+    <div
+      className="absolute left-0 right-0 z-50 flex flex-col bg-[#F5F5F5] rounded-t-[48px]"
+      style={{ top: scrollTop, height: containerHeight }}
+    >
+      {/* Image carousel */}
+      <div className="relative p-3 pt-4 shrink-0">
+        <div className="relative overflow-hidden rounded-3xl bg-white">
+          <div
+            ref={carouselRef}
+            onScroll={handleCarouselScroll}
+            className="flex overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {images.map((img, i) => (
+              <div key={i} className="w-full shrink-0 snap-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={img.src}
+                  alt={`${product.name} - ${img.label}`}
+                  className="w-full aspect-[1/1] object-cover"
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Slide indicators */}
+          {images.length > 1 && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+              {images.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => scrollToSlide(i)}
+                  className={cn(
+                    "h-1.5 rounded-full transition-all duration-200",
+                    i === activeSlide ? "w-4 bg-black/70" : "w-1.5 bg-black/20",
+                  )}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Price badge */}
+          {price && activeSlide === 0 && (
+            <div className="absolute left-3 bottom-8 rounded-full bg-black/70 backdrop-blur-sm px-2.5 py-1">
+              <span className="text-[12px] font-semibold text-white">
+                {price}
+              </span>
+            </div>
+          )}
+
+          {/* Slide label */}
+          {activeSlide > 0 && (
+            <div className="absolute left-3 bottom-8 rounded-full bg-white/85 backdrop-blur-sm px-2.5 py-1">
+              <span className="text-[10px] font-semibold text-black/60">
+                {images[activeSlide]?.label}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Back button */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute left-6 top-7 flex size-8 items-center justify-center rounded-full bg-white/85 backdrop-blur-sm shadow-sm"
+        >
+          <RiArrowRightSLine className="size-4 rotate-180 text-black/70" />
+        </button>
+
+        {/* Bookmark */}
+        <button
+          type="button"
+          className="absolute right-6 top-7 flex size-8 items-center justify-center rounded-full bg-white/85 backdrop-blur-sm shadow-sm"
+        >
+          <RiBookmarkLine className="size-3.5 text-black/70" />
+        </button>
+      </div>
+
+      {/* Product info */}
+      <div className="px-4 pt-2 pb-6 space-y-3 overflow-y-auto flex-1 min-h-0">
+        {/* Brand & name */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/40">
+            {product.brand}
+          </p>
+          <h2 className="mt-0.5 text-[15px] font-semibold leading-snug text-black/90">
+            {product.name}
+          </h2>
+        </div>
+
+        {/* Description */}
+        {product.description && (
+          <p className="text-[12px] leading-relaxed text-black/50">
+            {product.description}
+          </p>
+        )}
+
+        {/* Detail pills */}
+        {product.details.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {product.details.map((row) => (
+              <div
+                key={row.label}
+                className="flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px]"
+              >
+                <span className="font-medium text-black/35">{row.label}</span>
+                <span className="font-semibold text-black/70">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black py-2.5 text-[12px] font-semibold text-white"
+          >
+            <RiShoppingBagLine className="size-3.5" />
+            Add to Bag
+          </button>
+
+          {/* Try On button */}
+          <button
+            type="button"
+            onClick={handleTryOn}
+            disabled={tryOnLoading || hasTryOnImage || !hasFullBodyPhoto}
+            className={cn(
+              "flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-all",
+              hasTryOnImage
+                ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                : tryOnLoading
+                  ? "bg-violet-50 text-violet-400"
+                  : "bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100",
+              !hasFullBodyPhoto && "opacity-40 cursor-not-allowed",
+            )}
+          >
+            {tryOnLoading ? (
+              <>
+                <svg
+                  className="size-3.5 animate-spin"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                  />
+                </svg>
+                Trying…
+              </>
+            ) : hasTryOnImage ? (
+              <>
+                <RiImageLine className="size-3.5" />
+                Done
+              </>
+            ) : (
+              <>
+                <RiShirtLine className="size-3.5" />
+                Try On
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            className="flex items-center justify-center rounded-xl bg-white px-3 py-2.5"
+          >
+            <RiShare2Line className="size-4 text-black/50" />
+          </button>
+        </div>
+
+        {/* Try-on error */}
+        {tryOnError && (
+          <p className="text-[11px] text-red-500/70 text-center">
+            {tryOnError}
+          </p>
+        )}
+
+        {/* Visit store link */}
+        {product.linkUrl && (
+          <a
+            href={product.linkUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-black/8 py-2 text-[11px] font-medium text-black/50"
+          >
+            <RiLink className="size-3" />
+            Visit Store
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Explore Preview Screen ──────────────────────────────────────────────────
+
 function ExplorePreviewScreen({
   items,
   curatedTypes,
@@ -410,8 +716,9 @@ function ExplorePreviewScreen({
     linkUrl: string;
     details: Array<{ label: string; value: string }>;
   };
-  const [selectedProduct, setSelectedProduct] =
-    useState<ProductDetail | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductDetail | null>(
+    null,
+  );
 
   const openProduct = (p: {
     imageUrl: string;
@@ -434,6 +741,8 @@ function ExplorePreviewScreen({
       ),
     });
   };
+
+  const preferences = useProfileStore((s) => s.preferences);
 
   const [statusTime, setStatusTime] = useState(() =>
     formatStatusTime(new Date()),
@@ -1296,7 +1605,13 @@ function ExplorePreviewScreen({
                       <article
                         key={item.id}
                         className="relative h-[190px] w-[260px] shrink-0 overflow-hidden rounded-xl bg-white cursor-pointer"
-                        onClick={() => openProduct({ imageUrl: item.imageUrl, title: item.title, linkUrl: item.products[0]?.linkUrl || "" })}
+                        onClick={() =>
+                          openProduct({
+                            imageUrl: item.imageUrl,
+                            title: item.title,
+                            linkUrl: item.products[0]?.linkUrl || "",
+                          })
+                        }
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -1535,114 +1850,15 @@ function ExplorePreviewScreen({
       </div>
 
       {/* ── Product Detail View ── */}
-      {selectedProduct ? (() => {
-        const price = selectedProduct.details.find((r) => r.label === "Price")?.value ?? null;
-
-        return (
-          <div className="absolute left-0 right-0 z-50 flex flex-col bg-[#F5F5F5] rounded-t-[48px]" style={{ top: phoneScrollRef.current?.scrollTop ?? 0, height: phoneScrollRef.current?.clientHeight ?? "100%" }}>
-            {/* Product image with padding */}
-            <div className="relative p-3 pt-4 shrink-0">
-              <div className="relative overflow-hidden rounded-3xl bg-white">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={selectedProduct.imageUrl}
-                  alt={selectedProduct.name}
-                  className="w-full aspect-[1/1] object-cover"
-                />
-
-                {/* Price badge */}
-                {price && (
-                  <div className="absolute left-3 bottom-3 rounded-full bg-black/70 backdrop-blur-sm px-2.5 py-1">
-                    <span className="text-[12px] font-semibold text-white">{price}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Back button */}
-              <button
-                type="button"
-                onClick={() => setSelectedProduct(null)}
-                className="absolute left-6 top-7 flex size-8 items-center justify-center rounded-full bg-white/85 backdrop-blur-sm shadow-sm"
-              >
-                <RiArrowRightSLine className="size-4 rotate-180 text-black/70" />
-              </button>
-
-              {/* Bookmark */}
-              <button
-                type="button"
-                className="absolute right-6 top-7 flex size-8 items-center justify-center rounded-full bg-white/85 backdrop-blur-sm shadow-sm"
-              >
-                <RiBookmarkLine className="size-3.5 text-black/70" />
-              </button>
-            </div>
-
-            {/* Product info */}
-            <div className="px-4 pt-2 pb-6 space-y-3 overflow-y-auto flex-1 min-h-0">
-              {/* Brand & name */}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/40">
-                  {selectedProduct.brand}
-                </p>
-                <h2 className="mt-0.5 text-[15px] font-semibold leading-snug text-black/90">
-                  {selectedProduct.name}
-                </h2>
-              </div>
-
-              {/* Description */}
-              {selectedProduct.description && (
-                <p className="text-[12px] leading-relaxed text-black/50">
-                  {selectedProduct.description}
-                </p>
-              )}
-
-              {/* Detail pills */}
-              {selectedProduct.details.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedProduct.details.map((row: { label: string; value: string }) => (
-                    <div
-                      key={row.label}
-                      className="flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px]"
-                    >
-                      <span className="font-medium text-black/35">{row.label}</span>
-                      <span className="font-semibold text-black/70">{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black py-2.5 text-[12px] font-semibold text-white"
-                >
-                  <RiShoppingBagLine className="size-3.5" />
-                  Add to Bag
-                </button>
-                <button
-                  type="button"
-                  className="flex items-center justify-center rounded-xl bg-white px-3 py-2.5"
-                >
-                  <RiShare2Line className="size-4 text-black/50" />
-                </button>
-              </div>
-
-              {/* Visit store link */}
-              {selectedProduct.linkUrl && (
-                <a
-                  href={selectedProduct.linkUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-center gap-1.5 rounded-xl border border-black/8 py-2 text-[11px] font-medium text-black/50"
-                >
-                  <RiLink className="size-3" />
-                  Visit Store
-                </a>
-              )}
-            </div>
-          </div>
-        );
-      })() : null}
+      {selectedProduct ? (
+        <ProductDetailOverlay
+          product={selectedProduct}
+          scrollTop={phoneScrollRef.current?.scrollTop ?? 0}
+          containerHeight={phoneScrollRef.current?.clientHeight ?? 0}
+          onClose={() => setSelectedProduct(null)}
+          userPhotos={preferences}
+        />
+      ) : null}
 
       {selectedSignalItem && activeBottomNav === "home" ? (
         <div className="absolute inset-0 z-40">
